@@ -38,23 +38,28 @@ class NetworkMeasurement {
 	final double velocity;
 
 	Map<String, Object?> toMap() {
+		double sanitize(double value, double fallback) {
+			if (value.isNaN || value.isInfinite) return fallback;
+			return value;
+		}
+
 		final map = <String, Object?>{
 			'session_id': sessionId,
 			'device_id': deviceId,
 			'device_make': deviceMake,
 			'device_model': deviceModel,
 			'timestamp': timestamp.millisecondsSinceEpoch,
-			'latitude': latitude,
-			'longitude': longitude,
-			'rsrp': rsrp,
-			'rsrq': rsrq,
-			'sinr': sinr,
-			'download': download,
-			'upload': upload,
+			'latitude': sanitize(latitude, 0.0),
+			'longitude': sanitize(longitude, 0.0),
+			'rsrp': sanitize(rsrp, -140.0),
+			'rsrq': sanitize(rsrq, -20.0),
+			'sinr': sanitize(sinr, -10.0),
+			'download': sanitize(download, 0.0),
+			'upload': sanitize(upload, 0.0),
 			'pci': pci,
 			'carrier': carrier,
 			'network_type': networkType,
-			'velocity': velocity,
+			'velocity': sanitize(velocity, 0.0),
 		};
 		if (id != null) {
 			map['id'] = id;

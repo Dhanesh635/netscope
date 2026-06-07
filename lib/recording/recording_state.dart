@@ -15,9 +15,6 @@ enum RecordingError {
   /// The user denied always-on / background location (recording will only
   /// work while the app is in the foreground).
   backgroundLocationDenied,
-
-  /// The background sampler service failed to start.
-  backgroundServiceStartFailed,
 }
 
 extension RecordingErrorX on RecordingError {
@@ -34,8 +31,6 @@ extension RecordingErrorX on RecordingError {
         return 'Phone-state permission denied. Signal metrics (RSRP/SINR) will be unavailable.';
       case RecordingError.backgroundLocationDenied:
         return 'Background location denied. Recording only works while the app is open.';
-      case RecordingError.backgroundServiceStartFailed:
-        return 'Recording service failed to start. Please try again.';
     }
   }
 
@@ -49,8 +44,6 @@ extension RecordingErrorX on RecordingError {
       case RecordingError.phoneStatePermissionDenied:
       case RecordingError.backgroundLocationDenied:
         return false;
-      case RecordingError.backgroundServiceStartFailed:
-        return true;
     }
   }
 }

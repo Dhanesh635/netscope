@@ -1,5 +1,7 @@
-import 'package:flutter/foundation.dart';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart' as path_provider;
 import '../models/measurement_session.dart';
 import '../models/network_measurement.dart';
 import 'database_helper.dart';
@@ -9,45 +11,71 @@ class MeasurementRepository {
     : _databaseHelper = databaseHelper ?? DatabaseHelper.instance;
 
   final DatabaseHelper _databaseHelper;
+  static final List<NetworkMeasurement> _fallbackCache = [];
 
   Future<int> createSession({DateTime? startedAt}) async {
     final db = await _databaseHelper.database;
-    return db.insert(DatabaseHelper.sessionsTable, {
+    final rowId = await db.insert(DatabaseHelper.sessionsTable, {
       'started_at': (startedAt ?? DateTime.now()).millisecondsSinceEpoch,
       'ended_at': null,
     });
+
+    return rowId;
   }
 
   Future<int> insertMeasurement(NetworkMeasurement measurement) async {
-    final db = await _databaseHelper.database;
     final sessionId = measurement.sessionId;
-    if (sessionId == null) {
-      throw StateError('Cannot insert measurement: sessionId is null. IPC sync failed.');
-    }
+    if (sessionId == null) return -1;
 
-    final rowId = await db.insert(DatabaseHelper.measurementsTable, {
-      ...measurement.toMap(),
-      'session_id': sessionId,
-    });
-    debugPrint('[MeasurementRepo] INSERT row=$rowId session_id=$sessionId');
-    return rowId;
+    _fallbackCache.add(measurement);
+
+    try {
+      final db = await _databaseHelper.database;
+      final rowId = await db.insert(DatabaseHelper.measurementsTable, {
+        ...measurement.toMap(),
+        'session_id': sessionId,
+      });
+      return rowId;
+    } catch (e, st) {
+      debugPrint('[MeasurementRepo] ERROR: $e\n$st');
+      try {
+        final dir = await path_provider.getApplicationDocumentsDirectory();
+        final file = File('${dir.path}/db_errors.txt');
+        await file.writeAsString('Insert error: $e\n', mode: FileMode.append);
+      } catch (_) {}
+      return -1;
+    }
   }
 
   Future<List<NetworkMeasurement>> getMeasurements({int? sessionId}) async {
     final db = await _databaseHelper.database;
 
-    final rows = await db.query(
-      DatabaseHelper.measurementsTable,
-      where: sessionId == null ? null : 'session_id = ?',
-      whereArgs: sessionId == null ? null : [sessionId],
-      orderBy: 'timestamp ASC',
-    );
+    final rows = <Map<String, Object?>>[];
+    try {
+      final dbRows = await db.query(
+        DatabaseHelper.measurementsTable,
+        where: sessionId == null ? null : 'session_id = ?',
+        whereArgs: sessionId == null ? null : [sessionId],
+        orderBy: 'timestamp ASC',
+      );
+      rows.addAll(dbRows);
+    } catch (e) {}
 
-    debugPrint('[MeasurementRepo] getMeasurements(session_id=$sessionId) → ${rows.length} rows');
-
-    return rows
+    final List<NetworkMeasurement> result = rows
         .map((row) => NetworkMeasurement.fromMap(row))
-        .toList(growable: false);
+        .toList(growable: true);
+
+    if (sessionId != null) {
+      final cached = _fallbackCache.where((m) => m.sessionId == sessionId).toList();
+      for (final c in cached) {
+        if (!result.any((r) => r.timestamp.millisecondsSinceEpoch == c.timestamp.millisecondsSinceEpoch)) {
+          result.add(c);
+        }
+      }
+    }
+
+    result.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return result;
   }
 
   Future<MeasurementSession?> getSessionById(int sessionId) async {

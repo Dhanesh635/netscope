@@ -31,8 +31,14 @@ class DatabaseHelper {
       databasePath,
       version: _databaseVersion,
       onConfigure: (db) async {
+        // Enable WAL mode so the background isolate and foreground isolate can
+        // write concurrently without locking each other out. Without WAL,
+        // Android's default journal mode serialises all writes and the
+        // background isolate's INSERT can be silently rejected under contention.
+        await db.rawQuery('PRAGMA journal_mode = WAL');
+        // Add a busy timeout to wait for locks instead of failing immediately.
+        await db.rawQuery('PRAGMA busy_timeout = 5000');
         await db.execute('PRAGMA foreign_keys = ON');
-        await db.execute('PRAGMA journal_mode = WAL');
       },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,

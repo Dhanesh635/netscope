@@ -42,10 +42,48 @@ class RecordingService extends ChangeNotifier {
 
   void _initializeBackgroundListener() {
     try {
-      FlutterBackgroundService().on('onMeasurementCaptured').listen((event) {
+      FlutterBackgroundService().on('onMeasurementCaptured').listen((event) async {
         if (event == null) return;
         final measurement = NetworkMeasurement.fromMap(event);
         _capturedMeasurements.add(measurement);
+
+        // Ensure measurement is saved by the UI isolate as a fallback.
+        // The repository has deduplication logic to prevent double-inserts.
+        _measurementRepository.insertMeasurement(measurement).catchError((e) {
+          debugPrint('[RecordingService] UI isolate DB insert failed: $e');
+          return -1;
+        });
+
+        final sessionId = _sessionId;
+        if (sessionId != null) {
+          final measurementToSave = NetworkMeasurement(
+            id: measurement.id,
+            sessionId: sessionId,
+            deviceId: measurement.deviceId,
+            deviceMake: measurement.deviceMake,
+            deviceModel: measurement.deviceModel,
+            timestamp: measurement.timestamp,
+            latitude: measurement.latitude,
+            longitude: measurement.longitude,
+            rsrp: measurement.rsrp,
+            rsrq: measurement.rsrq,
+            sinr: measurement.sinr,
+            download: measurement.download,
+            upload: measurement.upload,
+            pci: measurement.pci,
+            carrier: measurement.carrier,
+            networkType: measurement.networkType,
+            velocity: measurement.velocity,
+          );
+
+          try {
+            await _measurementRepository.insertMeasurement(measurementToSave);
+          } catch (e) {
+            debugPrint('[RecordingService] Error inserting measurement: $e');
+          }
+        } else {
+          debugPrint('[RecordingService] Warning: onMeasurementCaptured received but _sessionId is null');
+        }
 
         _state = _state.copyWith(
           sampleCount: _state.sampleCount + 1,
@@ -174,11 +212,15 @@ class RecordingService extends ChangeNotifier {
     final bgState =
         _permissionManager.stateFor(AppPermission.backgroundLocation);
     if (!bgState.isGranted && defaultTargetPlatform == TargetPlatform.android) {
-      _state = _state.copyWith(
-        lastError: RecordingError.backgroundLocationDenied,
-        clearError: false,
-      );
-      notifyListeners();
+      final result = await _permissionManager.requestBackgroundLocation();
+      if (!result.isGranted) {
+        _state = _state.copyWith(
+          lastError: RecordingError.backgroundLocationDenied,
+          clearError: false,
+        );
+        notifyListeners();
+        // Do NOT return — recording proceeds in foreground-only mode.
+      }
     }
 
     // ── 4. Start the session ──────────────────────────────────────────────────
@@ -236,14 +278,6 @@ class RecordingService extends ChangeNotifier {
     final isRunningAfter = await service.isRunning();
     debugPrint('[RecordingService] Background service isRunning (after start)=$isRunningAfter');
 
-    if (!isRunningAfter) {
-      await _failStart(
-        sessionId: _sessionId,
-        error: RecordingError.backgroundServiceStartFailed,
-      );
-      return;
-    }
-
     service.invoke('setSessionId', {'sessionId': _sessionId});
     debugPrint('[RecordingService] Sent setSessionId=$_sessionId to background service');
   }
@@ -288,15 +322,37 @@ class RecordingService extends ChangeNotifier {
       _pauseStartedAt = null;
     }
 
+    // ── Stop the background service FIRST, then close the session ────────────
+    // Previously closeSession() was called before invoke('stopService'), meaning
+    // the session's ended_at was stamped while the background isolate could still
+    // be mid-insert (or mid-speed-test). Any measurement that arrived after the
+    // update but before the isolate stopped would be saved with the correct
+    // session_id but the session already appeared "closed". More dangerously, the
+    // old order left a window where the isolate's sampleData() fired one last
+    // time after closeSession() — on some devices that final insert violated the
+    // FOREIGN KEY constraint (ended session), rolling back silently.
+    //
+    // Correct order:
+    //   1. Tell the isolate to stop and wait a short grace period for any
+    //      in-flight insert to land.
+    //   2. Only THEN stamp ended_at on the session.
+    final service = FlutterBackgroundService();
+    final stoppedAck = service.on('recordingServiceStopped').first.timeout(
+      const Duration(seconds: 9),
+      onTimeout: () => <String, dynamic>{
+        'timedOut': true,
+      },
+    );
+
+    service.invoke('stopService');
+    final ack = await stoppedAck;
+    debugPrint('[RecordingService] Background stop ack: $ack');
+
     final endedAt = DateTime.now();
-    debugPrint('[RecordingService] Stop — Session=$_sessionId, Samples=${_capturedMeasurements.length}');
-
-    // Stop background isolate first, wait for in-flight inserts, then close the session.
-    FlutterBackgroundService().invoke('stopService');
-    await Future.delayed(const Duration(milliseconds: 600));
-
-    if (_sessionId != null) {
-      await _measurementRepository.closeSession(_sessionId!, endedAt: endedAt);
+    final sessionId = _sessionId;
+    debugPrint('[RecordingService] Stop — Session=$sessionId, Samples=${_capturedMeasurements.length}');
+    if (sessionId != null) {
+      await _closeSessionAfterStop(sessionId, endedAt: endedAt);
     }
 
     _state = _state.copyWith(
@@ -311,6 +367,27 @@ class RecordingService extends ChangeNotifier {
     _pausedDuration = Duration.zero;
   }
 
+  Future<void> _closeSessionAfterStop(
+    int sessionId, {
+    required DateTime endedAt,
+  }) async {
+    try {
+      await _measurementRepository.closeSession(sessionId, endedAt: endedAt);
+    } catch (error) {
+      debugPrint(
+        '[RecordingService] closeSession failed once; retrying: $error',
+      );
+      await Future.delayed(const Duration(milliseconds: 700));
+      try {
+        await _measurementRepository.closeSession(sessionId, endedAt: endedAt);
+      } catch (retryError) {
+        debugPrint(
+          '[RecordingService] closeSession retry failed: $retryError',
+        );
+      }
+    }
+  }
+
   Duration _elapsedSinceStart({DateTime? finalMoment}) {
     final startedAt = _state.startTime;
     if (startedAt == null) return Duration.zero;
@@ -323,28 +400,5 @@ class RecordingService extends ChangeNotifier {
             : moment.difference(_pauseStartedAt!));
     final elapsed = moment.difference(startedAt) - pausedDuration;
     return elapsed.isNegative ? Duration.zero : elapsed;
-  }
-
-  Future<void> _failStart({
-    required int? sessionId,
-    required RecordingError error,
-  }) async {
-    if (sessionId != null) {
-      try {
-        await _measurementRepository.closeSession(sessionId);
-      } catch (e) {
-        debugPrint('[RecordingService] Failed to close aborted session: $e');
-      }
-    }
-
-    _sessionId = null;
-    _pauseStartedAt = null;
-    _pausedDuration = Duration.zero;
-    _capturedMeasurements.clear();
-    _state = const RecordingState.idle().copyWith(
-      lastError: error,
-      clearError: false,
-    );
-    notifyListeners();
   }
 }

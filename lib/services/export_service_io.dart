@@ -130,6 +130,15 @@ class ExportService {
       }
     }
 
+    try {
+      final baseDirectory = await _documentsDirectoryProvider();
+      final errFile = File('${baseDirectory.path}/db_errors.txt');
+      if (await errFile.exists()) {
+        rows.add([await errFile.readAsString()]);
+        await errFile.delete();
+      }
+    } catch (_) {}
+
     await file.writeAsString(converter.convert(rows), flush: true);
     return file;
   }

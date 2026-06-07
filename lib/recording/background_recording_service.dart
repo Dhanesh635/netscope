@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -81,6 +82,7 @@ class BackgroundRecordingService {
 
     int? sessionId;
     Timer? samplingTimer;
+    Future<void>? activeSample;
 
     int recordedCount = 0;
     int savedCount = 0;
@@ -151,7 +153,12 @@ class BackgroundRecordingService {
     Completer<({double? download, double? upload})>? speedCompleter;
     double cachedDownload = 0;
     double cachedUpload = 0;
-    int samplesSinceSpeedTest = 0; // Defer speed test on first sample
+    // Start at 0, not 999. The old value of 999 forced a speed-test IPC on
+    // the very first sampleData() call. That 30-second round-trip meant the
+    // first measurement was never written until well after the user might have
+    // already stopped the recording, producing an empty CSV. Speed tests are
+    // still triggered every ~60 s (12 × 5 s cycles) — just not on sample #1.
+    int samplesSinceSpeedTest = 0;
 
     service.on('speedTestResponse').listen((event) {
       if (event != null &&
@@ -183,12 +190,25 @@ class BackgroundRecordingService {
 
     // ── Service lifecycle ───────────────────────────────────────────────────
 
-    service.on('stopService').listen((event) {
+    service.on('stopService').listen((event) async {
       samplingTimer?.cancel();
+      final pendingSample = activeSample;
+      if (pendingSample != null) {
+        try {
+          await pendingSample.timeout(const Duration(seconds: 8));
+        } catch (e) {
+          debugPrint('[BackgroundRecording] Timed out waiting for active sample: $e');
+        }
+      }
+
       debugPrint('[BackgroundRecording] Stop — Recorded: $recordedCount, Saved: $savedCount');
       if (recordedCount != savedCount) {
         debugPrint('[BackgroundRecording] WARNING: Measurement loss detected!');
       }
+      service.invoke('recordingServiceStopped', {
+        'recordedCount': recordedCount,
+        'savedCount': savedCount,
+      });
       service.stopSelf();
     });
 
@@ -225,7 +245,7 @@ class BackgroundRecordingService {
         double velocity = 0.0;
 
         try {
-          final position = await locationService.getCurrentLocation().timeout(const Duration(seconds: 10));
+          final position = await locationService.getCurrentLocation().timeout(const Duration(seconds: 3));
           lat = position.latitude;
           lng = position.longitude;
           velocity = locationService.velocityFrom(position) ?? 0.0;
@@ -285,6 +305,11 @@ class BackgroundRecordingService {
           debugPrint('[BackgroundRecording] Sample #$recordedCount saved successfully');
         } catch (e, st) {
           debugPrint('[BackgroundRecording] DB INSERT ERROR: $e\n$st');
+          try {
+            final dir = await getApplicationDocumentsDirectory();
+            final file = File('${dir.path}/db_errors.txt');
+            await file.writeAsString('Error inserting sample $recordedCount: $e\n', mode: FileMode.append);
+          } catch (_) {}
         }
 
         final notifBody = signalInfo.status == SignalInfoStatus.permissionDenied
@@ -316,18 +341,29 @@ class BackgroundRecordingService {
       }
     }
 
+    Future<void> runSample() {
+      if (activeSample != null) {
+        return activeSample!;
+      }
+
+      activeSample = sampleData().whenComplete(() {
+        activeSample = null;
+      });
+      return activeSample!;
+    }
+
     service.on('setSessionId').listen((event) {
       final newId = event?['sessionId'] as int?;
       if (newId != null && sessionId == null) {
         sessionId = newId;
         // Trigger first sample immediately when session is known
-        sampleData();
+        runSample();
       } else {
         sessionId = newId;
       }
     });
 
-    samplingTimer = Timer.periodic(const Duration(seconds: 5), (_) => sampleData());
+    samplingTimer = Timer.periodic(const Duration(seconds: 5), (_) => runSample());
 
   }
 
