@@ -11,7 +11,10 @@ Color signalColorForRsrp(double rsrp) {
   return Colors.red;
 }
 
-Color signalColorForSinr(double sinr) {
+Color signalColorForSinr(double? sinr) {
+  if (sinr == null) {
+    return Colors.grey;
+  }
   if (sinr > 20) {
     return Colors.green;
   }

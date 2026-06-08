@@ -10,7 +10,7 @@ class NetworkMeasurement {
 		required this.longitude,
 		required this.rsrp,
 		required this.rsrq,
-		required this.sinr,
+		this.sinr,
 		required this.download,
 		required this.upload,
 		required this.pci,
@@ -29,7 +29,7 @@ class NetworkMeasurement {
 	final double longitude;
 	final double rsrp;
 	final double rsrq;
-	final double sinr;
+	final double? sinr;
 	final double download;
 	final double upload;
 	final int pci;
@@ -43,6 +43,12 @@ class NetworkMeasurement {
 			return value;
 		}
 
+		double? sanitizeNullable(double? value) {
+			if (value == null) return null;
+			if (value.isNaN || value.isInfinite) return null;
+			return value;
+		}
+
 		final map = <String, Object?>{
 			'session_id': sessionId,
 			'device_id': deviceId,
@@ -53,7 +59,7 @@ class NetworkMeasurement {
 			'longitude': sanitize(longitude, 0.0),
 			'rsrp': sanitize(rsrp, -140.0),
 			'rsrq': sanitize(rsrq, -20.0),
-			'sinr': sanitize(sinr, -10.0),
+			'sinr': sanitizeNullable(sinr),
 			'download': sanitize(download, 0.0),
 			'upload': sanitize(upload, 0.0),
 			'pci': pci,
@@ -84,6 +90,14 @@ class NetworkMeasurement {
       return fallback;
     }
 
+    double? parseDoubleNullable(dynamic value) {
+      if (value == null) return null;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) return double.tryParse(value);
+      return null;
+    }
+
     return NetworkMeasurement(
       id: parseInt(map['id']),
       sessionId: parseInt(map['session_id']),
@@ -95,7 +109,7 @@ class NetworkMeasurement {
       longitude: parseDouble(map['longitude'], 0.0),
       rsrp: parseDouble(map['rsrp'], -140.0),
       rsrq: parseDouble(map['rsrq'], -20.0),
-      sinr: parseDouble(map['sinr'], -10.0),
+      sinr: parseDoubleNullable(map['sinr']),
       download: parseDouble(map['download'], 0.0),
       upload: parseDouble(map['upload'], 0.0),
       pci: parseInt(map['pci']) ?? 0,

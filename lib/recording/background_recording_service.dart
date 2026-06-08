@@ -337,14 +337,14 @@ class BackgroundRecordingService {
 
   /// Extracts signal metric values from [SignalInfo], returning safe fallback
   /// defaults when the info is unavailable or permission is denied.
-  static (double, double, double, int, String, String) _extractSignalValues(
+  static (double, double, double?, int, String, String) _extractSignalValues(
     SignalInfo signalInfo,
   ) {
     if (signalInfo.status == SignalInfoStatus.available) {
       return (
         signalInfo.rsrp?.toDouble() ?? -140.0,
         signalInfo.rsrq?.toDouble() ?? -20.0,
-        signalInfo.sinr ?? -10.0,
+        signalInfo.sinr,
         signalInfo.pci ?? 0,
         signalInfo.carrier ?? 'NO_SERVICE',
         signalInfo.technology.displayName,
@@ -355,7 +355,7 @@ class BackgroundRecordingService {
     return (
       -140.0, // rsrp
       -20.0,  // rsrq
-      -10.0,  // sinr
+      null,   // sinr
       0,      // pci
       'NO_SERVICE',
       'NONE',

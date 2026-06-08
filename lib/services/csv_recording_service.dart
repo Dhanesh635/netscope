@@ -56,7 +56,7 @@ class CsvRecordingService {
       _escapeCsv(measurement.networkType),
       measurement.rsrp.toStringAsFixed(1),
       measurement.rsrq.toStringAsFixed(1),
-      measurement.sinr.toStringAsFixed(1),
+      measurement.sinr != null ? measurement.sinr!.toStringAsFixed(1) : 'NULL',
       measurement.pci.toString(),
       measurement.download.toStringAsFixed(2),
       measurement.upload.toStringAsFixed(2),

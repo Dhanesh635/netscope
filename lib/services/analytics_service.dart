@@ -17,6 +17,7 @@ class AnalyticsService {
     var totalRsrp = 0.0;
     var totalRsrq = 0.0;
     var totalSinr = 0.0;
+    var sinrCount = 0;
     var totalDownload = 0.0;
     var totalUpload = 0.0;
     var totalVelocity = 0.0;
@@ -26,7 +27,10 @@ class AnalyticsService {
       final measurement = orderedMeasurements[index];
       totalRsrp += measurement.rsrp;
       totalRsrq += measurement.rsrq;
-      totalSinr += measurement.sinr;
+      if (measurement.sinr != null) {
+        totalSinr += measurement.sinr!;
+        sinrCount++;
+      }
       totalDownload += measurement.download;
       totalUpload += measurement.upload;
       totalVelocity += measurement.velocity;
@@ -52,7 +56,7 @@ class AnalyticsService {
     return AnalyticsSummary(
       averageRsrp: totalRsrp / sampleCount,
       averageRsrq: totalRsrq / sampleCount,
-      averageSinr: totalSinr / sampleCount,
+      averageSinr: sinrCount > 0 ? totalSinr / sinrCount : 0.0,
       averageDownloadSpeed: totalDownload / sampleCount,
       averageUploadSpeed: totalUpload / sampleCount,
       bestRsrp: orderedMeasurements.map((measurement) => measurement.rsrp).reduce((current, candidate) => candidate > current ? candidate : current),

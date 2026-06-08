@@ -51,11 +51,9 @@ class HomeDashboardState extends ChangeNotifier {
   }
 
   String get sinrLabel {
-    if (_liveSignalInfo?.sinr != null) {
-      return _formatDecimal(_liveSignalInfo!.sinr);
-    }
-    if (_latestMeasurement != null) return _formatDecimal(_latestMeasurement!.sinr);
-    return '—';
+    final value = _liveSignalInfo?.sinr ?? _latestMeasurement?.sinr;
+    if (value == null) return 'N/A';
+    return _formatDecimal(value);
   }
 
   String get pciLabel {
