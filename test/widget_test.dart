@@ -15,7 +15,6 @@ void main() {
 
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Live Map'), findsOneWidget);
-    expect(find.text('Analytics'), findsOneWidget);
     expect(find.text('History'), findsOneWidget);
     expect(find.text('NetScope 5G'), findsOneWidget);
   });

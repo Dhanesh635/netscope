@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
-import 'data/measurement_repository.dart';
+
 import 'location/location_provider.dart';
 import 'location/location_service.dart';
 import 'map/map_service.dart';
@@ -12,7 +12,8 @@ import 'navigation/app_navigation_shell.dart';
 import 'permissions/permission_manager.dart';
 import 'recording/background_recording_service.dart';
 import 'recording/recording_service.dart';
-import 'services/export_service.dart';
+
+
 import 'state/home_dashboard_state.dart';
 import 'theme/app_theme.dart';
 
@@ -32,13 +33,7 @@ class NetScopeApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: <SingleChildWidget>[
-        // ── 0. Services and Repositories ─────────────────────────────────────
-        Provider<MeasurementRepository>(
-          create: (_) => MeasurementRepository(),
-        ),
-        Provider<ExportService>(
-          create: (_) => ExportService(),
-        ),
+
 
         // ── 1. PermissionManager: top of the tree, no dependencies ───────────
         ChangeNotifierProvider<PermissionManager>(
@@ -70,18 +65,15 @@ class NetScopeApp extends StatelessWidget {
           },
         ),
 
-        // ── 3. RecordingService: depends on PermissionManager & MeasurementRepository
-        ChangeNotifierProxyProvider2<PermissionManager, MeasurementRepository,
-            RecordingService>(
+        // ── 3. RecordingService: depends on PermissionManager
+        ChangeNotifierProxyProvider<PermissionManager, RecordingService>(
           create: (context) => RecordingService(
             permissionManager: context.read<PermissionManager>(),
-            measurementRepository: context.read<MeasurementRepository>(),
           ),
-          update: (context, permManager, measurementRepo, previous) =>
+          update: (context, permManager, previous) =>
               previous ??
               RecordingService(
                 permissionManager: permManager,
-                measurementRepository: measurementRepo,
               ),
         ),
 

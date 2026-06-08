@@ -67,25 +67,41 @@ class NetworkMeasurement {
 		return map;
 	}
 
-	factory NetworkMeasurement.fromMap(Map<String, Object?> map) {
-		return NetworkMeasurement(
-			id: map['id'] as int?,
-			sessionId: map['session_id'] as int?,
-			deviceId: map['device_id'] as String? ?? '',
-			deviceMake: map['device_make'] as String? ?? '',
-			deviceModel: map['device_model'] as String? ?? '',
-			timestamp: DateTime.fromMillisecondsSinceEpoch(map['timestamp'] as int),
-			latitude: (map['latitude'] as num).toDouble(),
-			longitude: (map['longitude'] as num).toDouble(),
-			rsrp: (map['rsrp'] as num).toDouble(),
-			rsrq: (map['rsrq'] as num).toDouble(),
-			sinr: (map['sinr'] as num).toDouble(),
-			download: (map['download'] as num).toDouble(),
-			upload: (map['upload'] as num).toDouble(),
-			pci: map['pci'] as int,
-			carrier: map['carrier'] as String,
-			networkType: map['network_type'] as String,
-			velocity: (map['velocity'] as num).toDouble(),
-		);
-	}
+  factory NetworkMeasurement.fromMap(Map<dynamic, dynamic> map) {
+    int? parseInt(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      if (value is String) return int.tryParse(value);
+      return null;
+    }
+
+    double parseDouble(dynamic value, double fallback) {
+      if (value == null) return fallback;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? fallback;
+      return fallback;
+    }
+
+    return NetworkMeasurement(
+      id: parseInt(map['id']),
+      sessionId: parseInt(map['session_id']),
+      deviceId: map['device_id']?.toString() ?? '',
+      deviceMake: map['device_make']?.toString() ?? '',
+      deviceModel: map['device_model']?.toString() ?? '',
+      timestamp: DateTime.fromMillisecondsSinceEpoch(parseInt(map['timestamp']) ?? DateTime.now().millisecondsSinceEpoch),
+      latitude: parseDouble(map['latitude'], 0.0),
+      longitude: parseDouble(map['longitude'], 0.0),
+      rsrp: parseDouble(map['rsrp'], -140.0),
+      rsrq: parseDouble(map['rsrq'], -20.0),
+      sinr: parseDouble(map['sinr'], -10.0),
+      download: parseDouble(map['download'], 0.0),
+      upload: parseDouble(map['upload'], 0.0),
+      pci: parseInt(map['pci']) ?? 0,
+      carrier: map['carrier']?.toString() ?? 'UNKNOWN',
+      networkType: map['network_type']?.toString() ?? 'UNKNOWN',
+      velocity: parseDouble(map['velocity'], 0.0),
+    );
+  }
 }
