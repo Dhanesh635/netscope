@@ -1,4 +1,5 @@
 class NetworkMeasurement {
+  
 	const NetworkMeasurement({
 		this.id,
 		this.sessionId,
@@ -17,6 +18,12 @@ class NetworkMeasurement {
 		required this.carrier,
 		required this.networkType,
 		required this.velocity,
+    this.handoverProbability,
+    this.prediction,
+    this.riskLevel,
+    this.qosScore,
+    
+    
 	});
 
 	final int? id;
@@ -36,6 +43,11 @@ class NetworkMeasurement {
 	final String carrier;
 	final String networkType;
 	final double velocity;
+  final double? handoverProbability;
+  final String? prediction;
+  final String? riskLevel;
+  final double? qosScore;
+  
 
 	Map<String, Object?> toMap() {
 		double sanitize(double value, double fallback) {
@@ -66,6 +78,10 @@ class NetworkMeasurement {
 			'carrier': carrier,
 			'network_type': networkType,
 			'velocity': sanitize(velocity, 0.0),
+			'handover_probability': handoverProbability,
+			'prediction': prediction,
+			'risk_level': riskLevel,
+			'qos_score': qosScore,
 		};
 		if (id != null) {
 			map['id'] = id;
@@ -116,6 +132,10 @@ class NetworkMeasurement {
       carrier: map['carrier']?.toString() ?? 'UNKNOWN',
       networkType: map['network_type']?.toString() ?? 'UNKNOWN',
       velocity: parseDouble(map['velocity'], 0.0),
+	  handoverProbability: parseDoubleNullable(map['handover_probability']),
+		prediction: map['prediction']?.toString(),
+		riskLevel: map['risk_level']?.toString(),
+		qosScore: parseDoubleNullable(map['qos_score']),
     );
   }
 }

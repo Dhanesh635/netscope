@@ -11,6 +11,7 @@ import '../permissions/permission_manager.dart';
 import '../services/network_service.dart';
 import '../services/speed_test_service.dart';
 import 'recording_state.dart';
+import '../services/prediction_service.dart';
 
 class RecordingService extends ChangeNotifier {
   RecordingService({
@@ -42,14 +43,43 @@ class RecordingService extends ChangeNotifier {
       FlutterBackgroundService().on('onMeasurementCaptured').listen((event) async {
         if (event == null) return;
         final measurement = NetworkMeasurement.fromMap(event);
-        _capturedMeasurements.add(measurement);
 
-        _state = _state.copyWith(
-          sampleCount: _state.sampleCount + 1,
-          elapsedDuration: _elapsedSinceStart(),
-          clearError: true,
-        );
-        notifyListeners();
+final ai = await PredictionService.instance.predict(measurement);
+
+final enriched = NetworkMeasurement(
+  id: measurement.id,
+  sessionId: measurement.sessionId,
+  deviceId: measurement.deviceId,
+  deviceMake: measurement.deviceMake,
+  deviceModel: measurement.deviceModel,
+  timestamp: measurement.timestamp,
+  latitude: measurement.latitude,
+  longitude: measurement.longitude,
+  rsrp: measurement.rsrp,
+  rsrq: measurement.rsrq,
+  sinr: measurement.sinr,
+  download: measurement.download,
+  upload: measurement.upload,
+  pci: measurement.pci,
+  carrier: measurement.carrier,
+  networkType: measurement.networkType,
+  velocity: measurement.velocity,
+
+  handoverProbability: ai?.probability,
+  prediction: ai?.prediction,
+  riskLevel: ai?.riskLevel,
+  qosScore: ai?.qosScore,
+);
+
+_capturedMeasurements.add(enriched);
+
+_state = _state.copyWith(
+  sampleCount: _state.sampleCount + 1,
+  elapsedDuration: _elapsedSinceStart(),
+  clearError: true,
+);
+
+notifyListeners();
       });
 
       FlutterBackgroundService().on('requestCsvPath').listen((_) {

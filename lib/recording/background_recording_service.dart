@@ -13,6 +13,7 @@ import '../services/csv_recording_service.dart';
 import '../location/location_service.dart';
 import '../models/network_measurement.dart';
 import '../models/signal_info.dart';
+import '../services/prediction_service.dart';
 
 @pragma('vm:entry-point')
 class BackgroundRecordingService {
@@ -227,6 +228,9 @@ class BackgroundRecordingService {
           velocity: velocity,
         );
 
+
+
+
         debugPrint('[BackgroundRecording] Sample #$recordedCount: '
             'time=${sample.timestamp.toIso8601String()}, '
             'lat=${sample.latitude.toStringAsFixed(6)}, '
@@ -265,7 +269,10 @@ class BackgroundRecordingService {
         );
 
         // Notify UI if alive — always invoked, even for fallback measurements.
-        service.invoke('onMeasurementCaptured', sample.toMap());
+        service.invoke(
+  'onMeasurementCaptured',
+  sample.toMap(),
+);
       } on Exception catch (e) {
         debugPrint('BackgroundRecordingService: sample error — $e');
       }

@@ -10,7 +10,7 @@ class CsvRecordingService {
   IOSink? _sink;
 
   static const String _header =
-      'timestamp,deviceid,devicemake,deviceModel,carrier,networktype,RSRP,RSRQ,SINR,PCI,download,upload,velocity,latitude,longitude';
+    'timestamp,deviceid,devicemake,deviceModel,carrier,networktype,RSRP,RSRQ,SINR,PCI,download,upload,velocity,latitude,longitude,handover_probability,prediction,risk_level,qos_score';
 
   /// Generates a new CSV file in the documents directory with a timestamped name.
   /// Writes the header row immediately, closes the file, and returns the absolute file path.
@@ -63,6 +63,10 @@ class CsvRecordingService {
       measurement.velocity.toStringAsFixed(2),
       measurement.latitude.toStringAsFixed(6),
       measurement.longitude.toStringAsFixed(6),
+      measurement.handoverProbability?.toStringAsFixed(4) ?? '',
+      measurement.prediction ?? '',
+      measurement.riskLevel ?? '',
+      measurement.qosScore?.toStringAsFixed(4) ?? '',
     ].join(',');
 
     sink.write('$row\n');
