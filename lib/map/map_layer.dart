@@ -1,7 +1,8 @@
 enum MapLayer {
   signalStrength,
   sinr,
-  downloadSpeed;
+  downloadSpeed,
+  aiRisk;
 
   String get label {
     switch (this) {
@@ -11,6 +12,8 @@ enum MapLayer {
         return 'SINR';
       case MapLayer.downloadSpeed:
         return 'Download Speed';
+      case MapLayer.aiRisk:
+        return 'AI Risk';
     }
   }
 }

@@ -1,10 +1,13 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../map/map_layer.dart';
 import '../map/map_service.dart';
+import '../map/risk_marker_icon.dart';
+import '../models/network_measurement.dart';
 import '../recording/recording_service.dart';
 import '../state/home_dashboard_state.dart';
 import '../widgets/glass_card.dart';
@@ -14,8 +17,6 @@ class LiveMapScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final isTest = Platform.environment.containsKey('FLUTTER_TEST');
 
     return SafeArea(
@@ -27,8 +28,9 @@ class LiveMapScreen extends StatelessWidget {
 
           return Stack(
             children: [
+              // ── Map ────────────────────────────────────────────────────────
               Positioned.fill(
-                child: isTest 
+                child: isTest
                     ? const Center(child: Text('GoogleMap placeholder'))
                     : GoogleMap(
                         initialCameraPosition: mapService.initialCameraPosition,
@@ -37,72 +39,118 @@ class LiveMapScreen extends StatelessWidget {
                         circles: mapService.circles,
                         polylines: mapService.polylines,
                         myLocationEnabled: true,
-                        myLocationButtonEnabled: true,
+                        myLocationButtonEnabled: false,
                         zoomControlsEnabled: false,
                         mapToolbarEnabled: false,
                         compassEnabled: true,
                         tiltGesturesEnabled: true,
                         rotateGesturesEnabled: true,
                         buildingsEnabled: true,
-                        onCameraMoveStarted: () {},
+                        onCameraMoveStarted: () =>
+                            context.read<MapService>().disableAutoFollow(),
+                        onTap: (_) =>
+                            context.read<MapService>().clearSelection(),
                       ),
               ),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      colorScheme.surface.withValues(alpha: 0.10),
-                      Colors.transparent,
-                      colorScheme.surface.withValues(alpha: 0.20),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Stack(
-                  children: [
-                    Positioned(
-                      top: 8,
-                      left: 0,
-                      right: 0,
-                      child: Column(
-                        children: [
-                          _MetricCardRow(
-                            isCompact: isCompact,
-                            metrics: [
-                              _MetricCardData(
-                                title: 'RSRP',
-                                value: '${dashboardState.rsrpLabel} dBm',
-                              ),
-                              _MetricCardData(
-                                title: 'SINR',
-                                value: '${dashboardState.sinrLabel} dB',
-                              ),
-                              _MetricCardData(
-                                title: 'PCI',
-                                value: dashboardState.pciLabel,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          _LayerToggleRow(
-                            activeLayer: mapService.activeLayer,
-                            onLayerChanged: mapService.setActiveLayer,
-                          ),
+
+              // ── Subtle gradient vignette ───────────────────────────────────
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Theme.of(context)
+                              .colorScheme
+                              .surface
+                              .withValues(alpha: 0.10),
+                          Colors.transparent,
+                          Theme.of(context)
+                              .colorScheme
+                              .surface
+                              .withValues(alpha: 0.20),
                         ],
                       ),
                     ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 12,
-                      child: _RecordingControlPanel(isCompact: isCompact),
+                  ),
+                ),
+              ),
+
+              // ── Top overlay: signal chips + layer toggle ───────────────────
+              Positioned(
+                top: 8,
+                left: 16,
+                right: 16,
+                child: Column(
+                  children: [
+                    _MetricCardRow(
+                      isCompact: isCompact,
+                      metrics: [
+                        _MetricCardData(
+                          title: 'RSRP',
+                          value: '${dashboardState.rsrpLabel} dBm',
+                        ),
+                        _MetricCardData(
+                          title: 'SINR',
+                          value: '${dashboardState.sinrLabel} dB',
+                        ),
+                        _MetricCardData(
+                          title: 'PCI',
+                          value: dashboardState.pciLabel,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _LayerToggleRow(
+                      activeLayer: mapService.activeLayer,
+                      onLayerChanged:
+                          context.read<MapService>().setActiveLayer,
                     ),
                   ],
                 ),
+              ),
+
+              // ── Right-side FABs: recenter + legend ─────────────────────────
+              Positioned(
+                right: 16,
+                bottom: isCompact ? 200 : 180,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!mapService.autoFollow) ...[
+                      _RecenterButton(
+                        onTap: () =>
+                            context.read<MapService>().recenter(),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    if (mapService.activeLayer == MapLayer.aiRisk)
+                      const _RiskLegendButton(),
+                  ],
+                ),
+              ),
+
+              // ── Marker popup sheet ─────────────────────────────────────────
+              if (mapService.selectedMeasurement != null)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: isCompact ? 192 : 172,
+                  child: _MeasurementPopup(
+                    measurement: mapService.selectedMeasurement!,
+                    onClose: () =>
+                        context.read<MapService>().clearSelection(),
+                  ),
+                ),
+
+              // ── Bottom: recording controls ─────────────────────────────────
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 12,
+                child: _RecordingControlPanel(isCompact: isCompact),
               ),
             ],
           );
@@ -111,6 +159,10 @@ class LiveMapScreen extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Layer toggle row
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _LayerToggleRow extends StatelessWidget {
   const _LayerToggleRow({
@@ -136,13 +188,24 @@ class _LayerToggleRow extends StatelessWidget {
               selected: isSelected,
               onSelected: (_) => onLayerChanged(layer),
               backgroundColor: Colors.black.withValues(alpha: 0.3),
-              selectedColor: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.7),
+              selectedColor: layer == MapLayer.aiRisk && isSelected
+                  ? const Color(0xFF7C4DFF).withValues(alpha: 0.75)
+                  : Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.70),
+              avatar: layer == MapLayer.aiRisk
+                  ? Icon(
+                      Icons.psychology_outlined,
+                      size: 14,
+                      color: isSelected ? Colors.white : Colors.white54,
+                    )
+                  : null,
               labelStyle: TextStyle(
                 color: isSelected ? Colors.white : Colors.white70,
                 fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontWeight:
+                    isSelected ? FontWeight.bold : FontWeight.normal,
               ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
@@ -155,9 +218,12 @@ class _LayerToggleRow extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Signal metric cards
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _MetricCardData {
   const _MetricCardData({required this.title, required this.value});
-
   final String title;
   final String value;
 }
@@ -174,24 +240,29 @@ class _MetricCardRow extends StatelessWidget {
         .map(
           (metric) => Expanded(
             child: GlassCard(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     metric.title,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    style:
+                        Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     metric.value,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800),
                   ),
                 ],
               ),
@@ -215,9 +286,475 @@ class _MetricCardRow extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Recenter FAB
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RecenterButton extends StatelessWidget {
+  const _RecenterButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton.small(
+      heroTag: 'recenter',
+      onPressed: onTap,
+      backgroundColor:
+          Theme.of(context).colorScheme.surface.withValues(alpha: 0.85),
+      child: Icon(
+        Icons.my_location_rounded,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Risk legend FAB + popover
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RiskLegendButton extends StatefulWidget {
+  const _RiskLegendButton();
+
+  @override
+  State<_RiskLegendButton> createState() => _RiskLegendButtonState();
+}
+
+class _RiskLegendButtonState extends State<_RiskLegendButton> {
+  bool _open = false;
+
+  static const _entries = [
+    ('Low', Color(0xFF00E676)),
+    ('Medium', Color(0xFFFFD600)),
+    ('High', Color(0xFFFF9800)),
+    ('Critical', Color(0xFFFF5252)),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (_open)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: cs.surface.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                  color: cs.outline.withValues(alpha: 0.18)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AI Risk Level',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final (label, color) in _entries) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: Colors.white, width: 1.5),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        label,
+                        style:
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (label != 'Critical') const SizedBox(height: 6),
+                ],
+              ],
+            ),
+          ),
+        FloatingActionButton.small(
+          heroTag: 'legend',
+          onPressed: () => setState(() => _open = !_open),
+          backgroundColor: cs.surface.withValues(alpha: 0.85),
+          child: Icon(
+            Icons.layers_outlined,
+            color: _open ? cs.primary : cs.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Measurement popup card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MeasurementPopup extends StatelessWidget {
+  const _MeasurementPopup({
+    required this.measurement,
+    required this.onClose,
+  });
+
+  final NetworkMeasurement measurement;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.12),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+      ),
+      child: Material(
+        key: ValueKey(measurement.timestamp),
+        color: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surface.withValues(alpha: 0.97),
+            borderRadius: BorderRadius.circular(20),
+            border:
+                Border.all(color: cs.outline.withValues(alpha: 0.18)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Drag handle + close ──────────────────────────────────────
+              Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(16, 12, 8, 0),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: cs.outline.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      _formatTimestamp(measurement.timestamp),
+                      style:
+                          Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: onClose,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // ── Content ──────────────────────────────────────────────────
+              SingleChildScrollView(
+                padding:
+                    const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Network section
+                    _PopupSectionHeader(
+                      icon: Icons.cell_tower_outlined,
+                      title: 'Network Information',
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _PopupChip(
+                            label: 'Carrier',
+                            value: measurement.carrier),
+                        _PopupChip(
+                            label: 'Type',
+                            value: measurement.networkType),
+                        _PopupChip(
+                            label: 'PCI',
+                            value: measurement.pci.toString()),
+                        _PopupChip(
+                          label: 'RSRP',
+                          value:
+                              '${measurement.rsrp.toStringAsFixed(0)} dBm',
+                        ),
+                        _PopupChip(
+                          label: 'RSRQ',
+                          value:
+                              '${measurement.rsrq.toStringAsFixed(0)} dB',
+                        ),
+                        _PopupChip(
+                          label: 'SINR',
+                          value: measurement.sinr != null
+                              ? '${measurement.sinr!.toStringAsFixed(1)} dB'
+                              : 'N/A',
+                        ),
+                        _PopupChip(
+                          label: 'Velocity',
+                          value:
+                              '${(measurement.velocity * 3.6).toStringAsFixed(1)} km/h',
+                        ),
+                        _PopupChip(
+                          label: 'Lat',
+                          value:
+                              measurement.latitude.toStringAsFixed(5),
+                        ),
+                        _PopupChip(
+                          label: 'Lon',
+                          value:
+                              measurement.longitude.toStringAsFixed(5),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+                    const Divider(height: 1),
+                    const SizedBox(height: 14),
+
+                    // AI section
+                    _PopupSectionHeader(
+                      icon: Icons.psychology_outlined,
+                      title: 'AI Prediction',
+                    ),
+                    const SizedBox(height: 10),
+                    _AiPredictionRow(measurement: measurement),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _formatTimestamp(DateTime ts) {
+    final h = ts.hour.toString().padLeft(2, '0');
+    final m = ts.minute.toString().padLeft(2, '0');
+    final s = ts.second.toString().padLeft(2, '0');
+    return '$h:$m:$s — ${ts.day}/${ts.month}/${ts.year}';
+  }
+}
+
+class _PopupSectionHeader extends StatelessWidget {
+  const _PopupSectionHeader({required this.icon, required this.title});
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: cs.primary),
+        const SizedBox(width: 6),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: cs.onSurface,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PopupChip extends StatelessWidget {
+  const _PopupChip({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontSize: 10,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: cs.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiPredictionRow extends StatelessWidget {
+  const _AiPredictionRow({required this.measurement});
+  final NetworkMeasurement measurement;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    final prob = measurement.handoverProbability;
+    final probLabel = prob != null
+        ? '${(prob * 100).toStringAsFixed(1)} %'
+        : '—';
+
+    final predLabel = measurement.prediction ?? '—';
+    final riskLabel = measurement.riskLevel ?? '—';
+    final qos = measurement.qosScore;
+    final qosLabel =
+        qos != null ? qos.toStringAsFixed(3) : '—';
+
+    final riskColor = riskLevelColor(measurement.riskLevel);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Risk chip — prominent colored badge
+        Row(
+          children: [
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: riskColor.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: riskColor.withValues(alpha: 0.55),
+                    width: 1.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: riskColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    riskLabel,
+                    style:
+                        Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: riskColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                predLabel,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Probability + QoS side by side
+        Row(
+          children: [
+            Expanded(
+              child: _PopupChip(
+                label: 'Probability',
+                value: probLabel,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _PopupChip(
+                label: 'QoS Score',
+                value: qosLabel,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recording control panel (unchanged logic, refreshed layout)
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _RecordingControlPanel extends StatelessWidget {
   const _RecordingControlPanel({required this.isCompact});
-
   final bool isCompact;
 
   @override
@@ -230,9 +767,8 @@ class _RecordingControlPanel extends StatelessWidget {
         icon: Icons.fiber_manual_record,
         label: 'Start Recording',
         accentColor: Colors.redAccent,
-        onPressed: state.isRecording
-            ? null
-            : () => recordingService.startRecording(),
+        onPressed:
+            state.isRecording ? null : () => recordingService.startRecording(),
       ),
       _ControlButton(
         icon: state.isPaused ? Icons.play_arrow : Icons.pause,
@@ -240,8 +776,8 @@ class _RecordingControlPanel extends StatelessWidget {
         onPressed: !state.isRecording
             ? null
             : state.isPaused
-            ? () => recordingService.resumeRecording()
-            : () => recordingService.pauseRecording(),
+                ? () => recordingService.resumeRecording()
+                : () => recordingService.pauseRecording(),
       ),
       _ControlButton(
         icon: Icons.stop,
@@ -252,31 +788,27 @@ class _RecordingControlPanel extends StatelessWidget {
       ),
     ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GlassCard(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: isCompact
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (final child in children) ...[
-                      child,
-                      const SizedBox(height: 10),
-                    ],
+    return GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: isCompact
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final child in children) ...[
+                    child,
+                    const SizedBox(height: 10),
                   ],
-                )
-              : Row(
-                  children: [
-                    for (var index = 0; index < children.length; index++) ...[
-                      Expanded(child: children[index]),
-                      if (index != children.length - 1)
-                        const SizedBox(width: 12),
-                    ],
+                ],
+              )
+            : Row(
+                children: [
+                  for (var i = 0; i < children.length; i++) ...[
+                    Expanded(child: children[i]),
+                    if (i != children.length - 1) const SizedBox(width: 12),
                   ],
-                ),
-        ),
+                ],
+              ),
       ),
     );
   }
@@ -307,11 +839,11 @@ class _ControlButton extends StatelessWidget {
       style: FilledButton.styleFrom(
         foregroundColor: foreground,
         backgroundColor: colorScheme.surface.withValues(alpha: 0.35),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
 }
-
-

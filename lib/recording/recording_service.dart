@@ -38,6 +38,13 @@ class RecordingService extends ChangeNotifier {
   NetworkMeasurement? get latestMeasurement =>
       _capturedMeasurements.isEmpty ? null : _capturedMeasurements.last;
 
+  /// The previous measurement — second-to-last in the captured list.
+  NetworkMeasurement? get previousMeasurement =>
+      _capturedMeasurements.length < 2 ? null : _capturedMeasurements[_capturedMeasurements.length - 2];
+
+  /// The active CSV file path for the current session. Null when not recording.
+  String? get activeCsvPath => _activeCsvPath;
+
   void _initializeBackgroundListener() {
     try {
       FlutterBackgroundService().on('onMeasurementCaptured').listen((event) async {
@@ -213,7 +220,10 @@ notifyListeners();
 
     final startedAt = DateTime.now();
     _activeCsvPath = await _csvRecordingService.startRecording();
-    debugPrint('[RecordingService] Session created: CSV=$_activeCsvPath');
+    // Open the sink on the foreground instance so enriched rows can be
+    // written here after AI prediction completes.
+    _csvRecordingService.openForAppending(_activeCsvPath!);
+    debugPrint('[RecordingService] Session created and sink opened: CSV=$_activeCsvPath');
 
     _state = RecordingState(
       isRecording: true,
@@ -313,6 +323,9 @@ notifyListeners();
     final ack = await stoppedAck;
     final completedPath = ack?['csvPath'] as String?;
     debugPrint('[RecordingService] Session stopped. CSV saved to: $completedPath');
+
+    // Close the foreground CSV sink.
+    await _csvRecordingService.stopRecording();
 
     _activeCsvPath = null;
     final endedAt = DateTime.now();

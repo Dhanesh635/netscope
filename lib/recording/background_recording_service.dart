@@ -9,11 +9,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-import '../services/csv_recording_service.dart';
 import '../location/location_service.dart';
 import '../models/network_measurement.dart';
 import '../models/signal_info.dart';
-import '../services/prediction_service.dart';
 
 @pragma('vm:entry-point')
 class BackgroundRecordingService {
@@ -71,7 +69,6 @@ class BackgroundRecordingService {
         FlutterLocalNotificationsPlugin();
 
     final locationService = LocationService();
-    final csvRecordingService = CsvRecordingService();
 
     String? activeCsvPath;
     Timer? samplingTimer;
@@ -238,14 +235,7 @@ class BackgroundRecordingService {
             'RSRP=${sample.rsrp.toStringAsFixed(0)}, '
             'PCI=${sample.pci}');
 
-        try {
-          if (activeCsvPath != null) {
-            savedCount++;
-            debugPrint('[BackgroundRecording] Sample #$recordedCount generated and written');
-          }
-        } catch (e, st) {
-          debugPrint('[BackgroundRecording] CSV APPEND ERROR: $e\n$st');
-        }
+        savedCount++;
 
         final notifBody = signalInfo.status == SignalInfoStatus.permissionDenied
             ? 'Signal permission denied — location only'
@@ -301,16 +291,14 @@ class BackgroundRecordingService {
         }
       }
 
-      final completedPath = await csvRecordingService.stopRecording();
-
-      debugPrint('[BackgroundRecording] Stop — Recorded: $recordedCount, Saved: $savedCount');
+      debugPrint('[BackgroundRecording] Stop — Recorded: $recordedCount, Sent to UI: $savedCount');
       if (recordedCount != savedCount) {
-        debugPrint('[BackgroundRecording] WARNING: Measurement loss detected!');
+        debugPrint('[BackgroundRecording] WARNING: Sample loss detected!');
       }
       service.invoke('recordingServiceStopped', {
         'recordedCount': recordedCount,
         'savedCount': savedCount,
-        'csvPath': completedPath,
+        'csvPath': activeCsvPath,
       });
       service.stopSelf();
     });
@@ -330,8 +318,8 @@ class BackgroundRecordingService {
       final newPath = event?['csvPath'] as String?;
       if (newPath != null && activeCsvPath == null) {
         activeCsvPath = newPath;
-        csvRecordingService.openForAppending(newPath);
-        // Trigger first sample immediately when CSV path is known
+        // Trigger first sample immediately when CSV path is known.
+        // CSV writing is handled by the foreground isolate after AI enrichment.
         runSample();
       } else {
         activeCsvPath = newPath;

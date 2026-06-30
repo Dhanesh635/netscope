@@ -5,10 +5,12 @@ import '../permissions/app_permission.dart';
 import '../permissions/permission_manager.dart';
 import '../recording/recording_state.dart';
 import '../state/home_dashboard_state.dart';
+import '../widgets/ai_prediction_card.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/info_tile.dart';
 import '../widgets/metric_card.dart';
 import '../widgets/permission_gate.dart';
+import '../widgets/session_summary_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -190,6 +192,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ],
               ),
+              const SizedBox(height: 20),
+
+              // ── AI Prediction ───────────────────────────────────────────────
+              AiPredictionCard(
+                measurement: dashboardState.latestMeasurement,
+              ),
+              const SizedBox(height: 20),
+
+              // ── Session Summary ─────────────────────────────────────────────
+              const SessionSummaryCard(),
               const SizedBox(height: 20),
 
               // ── Recording control buttons ───────────────────────────────────

@@ -28,6 +28,9 @@ class HomeDashboardState extends ChangeNotifier {
   bool get isPaused => _recordingService?.state.isPaused ?? false;
   bool get hasLiveMeasurement => _latestMeasurement != null;
 
+  /// The most recent enriched [NetworkMeasurement], including AI prediction fields.
+  NetworkMeasurement? get latestMeasurement => _latestMeasurement;
+
   /// The most recent recording error from the recording service.
   RecordingError? get lastRecordingError =>
       _recordingService?.state.lastError;
