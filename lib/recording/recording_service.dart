@@ -70,7 +70,7 @@ final enriched = NetworkMeasurement(
   riskLevel: ai?.riskLevel,
   qosScore: ai?.qosScore,
 );
-
+await _csvRecordingService.appendMeasurement(enriched);
 _capturedMeasurements.add(enriched);
 
 _state = _state.copyWith(

@@ -240,7 +240,6 @@ class BackgroundRecordingService {
 
         try {
           if (activeCsvPath != null) {
-            await csvRecordingService.appendMeasurement(sample);
             savedCount++;
             debugPrint('[BackgroundRecording] Sample #$recordedCount generated and written');
           }
